@@ -93,12 +93,11 @@ pub fn parse_float<T: FastFloat>(
     if input[i] == b'-' {
         neg = true;
         i += 1;
-    } else if input[i] == b'+' {
-        if !options.format.contains(FfcFormat::BASIC_JSON)
-            && options.format.contains(FfcFormat::ALLOW_LEADING_PLUS)
-        {
-            i += 1;
-        }
+    } else if input[i] == b'+'
+        && !options.format.contains(FfcFormat::BASIC_JSON)
+        && options.format.contains(FfcFormat::ALLOW_LEADING_PLUS)
+    {
+        i += 1;
     }
 
     let prefix_len = i;
@@ -223,9 +222,9 @@ pub fn parse_float<T: FastFloat>(
 
     match s.parse::<T>() {
         Ok(val) => {
-            if val.is_infinite() {
-                Err(ParseError::OutOfRange)
-            } else if val == T::ZERO && parsed_bytes.iter().any(|&b| b > b'0' && b <= b'9') {
+            if val.is_infinite()
+                || (val == T::ZERO && parsed_bytes.iter().any(|&b| b > b'0' && b <= b'9'))
+            {
                 Err(ParseError::OutOfRange)
             } else {
                 Ok((val, remaining))
@@ -321,7 +320,7 @@ pub fn parse_int<T: FastInt>(mut input: &[u8]) -> Result<(T, &[u8]), ParseError>
         let d4 = ((chunk >> 24) & 0xFF) - 0x30;
         let d5 = ((chunk >> 16) & 0xFF) - 0x30;
         let d6 = ((chunk >> 8) & 0xFF) - 0x30;
-        let d7 = ((chunk >> 0) & 0xFF) - 0x30;
+        let d7 = (chunk & 0xFF) - 0x30;
 
         let parsed_chunk = d0 * 10_000_000
             + d1 * 1_000_000
