@@ -1,5 +1,8 @@
 #![no_std]
 
+/* This is a NOT a direct port of the fast_float library authored by Daniel Lemire
+    but rather an approximation of a translation into rust (probably full of bugs)
+*/
 use core::str;
 
 bitflags::bitflags! {
