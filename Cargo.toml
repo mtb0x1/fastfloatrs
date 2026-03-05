@@ -1,0 +1,12 @@
+[package]
+name = "fastfloatrs"
+version = "0.1.0"
+edition = "2024"
+authors = ["lemire", "kolemannix", "mtb0x1"]
+
+[dependencies]
+bitflags = "*"
+
+[[bin]]
+name = "demo"
+path = "examples/demo.rs"
