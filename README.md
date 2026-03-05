@@ -69,7 +69,7 @@ let json_opts = FfcParseOptions {
 
 ## License
 
-Licensed under Apache 2.0, Boost, or MIT licenses (matching upstream fast_float project).
+Matching upstream fast_float, ffc.h projects.
 
 ## References
 
