@@ -1,4 +1,4 @@
-use fastfloatrs::{FfcFormat, FfcParseOptions, parse_float, parse_int};
+use fastfloatrs::{FfFormat, FfcParseOptions, parse_float, parse_int};
 
 fn main() {
     // float parsing (f64)
@@ -13,7 +13,7 @@ fn main() {
 
     // parsing (f32) with JSON constraints
     let json_opts = FfcParseOptions {
-        format: FfcFormat::PRESET_JSON,
+        format: FfFormat::PRESET_JSON,
         ..Default::default()
     };
     let f32_input = b"01.23"; // Invalid JSON (leading zero)

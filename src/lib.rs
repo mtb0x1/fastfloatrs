@@ -7,7 +7,7 @@ use core::str;
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct FfcFormat: u32 {
+    pub struct FfFormat: u32 {
         const SCIENTIFIC         = 1 << 0;
         const FIXED              = 1 << 2;
         const HEX                = 1 << 3;
@@ -32,14 +32,14 @@ pub enum ParseError {
 
 #[derive(Debug, Clone, Copy)]
 pub struct FfcParseOptions {
-    pub format: FfcFormat,
+    pub format: FfFormat,
     pub decimal_point: u8,
 }
 
 impl Default for FfcParseOptions {
     fn default() -> Self {
         Self {
-            format: FfcFormat::PRESET_GENERAL,
+            format: FfFormat::PRESET_GENERAL,
             decimal_point: b'.',
         }
     }
@@ -77,7 +77,7 @@ pub fn parse_float<T: FastFloat>(
     mut input: &[u8],
     options: FfcParseOptions,
 ) -> Result<(T, &[u8]), ParseError> {
-    if options.format.contains(FfcFormat::SKIP_WHITE_SPACE) {
+    if options.format.contains(FfFormat::SKIP_WHITE_SPACE) {
         while let Some(&b) = input.first() {
             if b.is_ascii_whitespace() {
                 input = &input[1..];
@@ -97,8 +97,8 @@ pub fn parse_float<T: FastFloat>(
         neg = true;
         i += 1;
     } else if input[i] == b'+'
-        && !options.format.contains(FfcFormat::BASIC_JSON)
-        && options.format.contains(FfcFormat::ALLOW_LEADING_PLUS)
+        && !options.format.contains(FfFormat::BASIC_JSON)
+        && options.format.contains(FfFormat::ALLOW_LEADING_PLUS)
     {
         i += 1;
     }
@@ -110,13 +110,13 @@ pub fn parse_float<T: FastFloat>(
         int_len += 1;
     }
 
-    let basic_json = options.format.contains(FfcFormat::BASIC_JSON);
+    let basic_json = options.format.contains(FfFormat::BASIC_JSON);
     if basic_json {
         if int_len == 0 || (int_len > 1 && input[prefix_len] == b'0') {
             return Err(ParseError::InvalidInput);
         }
     } else if int_len == 0 && (i == input.len() || input[i] != options.decimal_point) {
-        if !options.format.contains(FfcFormat::NO_INFNAN) {
+        if !options.format.contains(FfFormat::NO_INFNAN) {
             let sub = &input[prefix_len..];
             let is_match =
                 |s: &[u8], p: &[u8]| s.len() >= p.len() && s[..p.len()].eq_ignore_ascii_case(p);
@@ -166,8 +166,8 @@ pub fn parse_float<T: FastFloat>(
     let mut exp_marker_idx = usize::MAX;
     if i < input.len() {
         let c = input[i];
-        let is_sci = options.format.contains(FfcFormat::SCIENTIFIC) && (c == b'e' || c == b'E');
-        let is_fortran = options.format.contains(FfcFormat::BASIC_FORTRAN)
+        let is_sci = options.format.contains(FfFormat::SCIENTIFIC) && (c == b'e' || c == b'E');
+        let is_fortran = options.format.contains(FfFormat::BASIC_FORTRAN)
             && (c == b'+' || c == b'-' || c == b'd' || c == b'D');
 
         if is_sci || is_fortran {
@@ -185,14 +185,14 @@ pub fn parse_float<T: FastFloat>(
             }
 
             if i == exp_start {
-                if !options.format.contains(FfcFormat::FIXED) {
+                if !options.format.contains(FfFormat::FIXED) {
                     return Err(ParseError::InvalidInput);
                 }
                 i = exp_marker_idx;
                 exp_marker_idx = usize::MAX;
             }
-        } else if options.format.contains(FfcFormat::SCIENTIFIC)
-            && !options.format.contains(FfcFormat::FIXED)
+        } else if options.format.contains(FfFormat::SCIENTIFIC)
+            && !options.format.contains(FfFormat::FIXED)
         {
             return Err(ParseError::InvalidInput);
         }
@@ -209,7 +209,7 @@ pub fn parse_float<T: FastFloat>(
     for (idx, &b) in parsed_bytes.iter().enumerate() {
         if b == options.decimal_point {
             buf[idx] = b'.';
-        } else if idx == exp_marker_idx && options.format.contains(FfcFormat::BASIC_FORTRAN) {
+        } else if idx == exp_marker_idx && options.format.contains(FfFormat::BASIC_FORTRAN) {
             if b == b'+' || b == b'-' || b == b'd' || b == b'D' {
                 buf[idx] = b'e';
             } else {
@@ -362,4 +362,286 @@ pub fn parse_int<T: FastInt>(mut input: &[u8]) -> Result<(T, &[u8]), ParseError>
     T::from_u64(val, neg)
         .map(|v| (v, input))
         .ok_or(ParseError::OutOfRange)
+}
+
+pub mod ffi {
+    use core::ffi::c_char;
+
+    use super::{parse_float, parse_int, FfFormat, FfcParseOptions, ParseError, FastInt};
+
+    // --- Types & constants from api.h -----------------------------------------
+
+    pub type FfcOutcome = u32;
+
+    pub const FFC_OUTCOME_OK: FfcOutcome = 0;
+    pub const FFC_OUTCOME_INVALID_INPUT: FfcOutcome = 1;
+    pub const FFC_OUTCOME_OUT_OF_RANGE: FfcOutcome = 2;
+
+    #[repr(C)]
+    pub struct ffc_result {
+        // Where parsing stopped
+        pub ptr: *const c_char,
+        // The outcome of the call
+        pub outcome: FfcOutcome,
+    }
+
+    pub type FfcFormat = u64;
+
+    pub const FFC_FORMAT_FLAG_SCIENTIFIC: FfcFormat = FfFormat::SCIENTIFIC.bits() as u64;
+    pub const FFC_FORMAT_FLAG_FIXED: FfcFormat = FfFormat::FIXED.bits() as u64;
+    pub const FFC_FORMAT_FLAG_HEX: FfcFormat = FfFormat::HEX.bits() as u64;
+    pub const FFC_FORMAT_FLAG_NO_INFNAN: FfcFormat = FfFormat::NO_INFNAN.bits() as u64;
+    pub const FFC_FORMAT_FLAG_BASIC_JSON: FfcFormat = FfFormat::BASIC_JSON.bits() as u64;
+    pub const FFC_FORMAT_FLAG_BASIC_FORTRAN: FfcFormat = FfFormat::BASIC_FORTRAN.bits() as u64;
+    pub const FFC_FORMAT_FLAG_ALLOW_LEADING_PLUS: FfcFormat = FfFormat::ALLOW_LEADING_PLUS.bits() as u64;
+    pub const FFC_FORMAT_FLAG_SKIP_WHITE_SPACE: FfcFormat = FfFormat::SKIP_WHITE_SPACE.bits() as u64;
+
+    pub const FFC_PRESET_GENERAL: FfcFormat =
+        FFC_FORMAT_FLAG_FIXED | FFC_FORMAT_FLAG_SCIENTIFIC;
+
+    pub const FFC_PRESET_JSON: FfcFormat =
+        FFC_FORMAT_FLAG_BASIC_JSON | FFC_PRESET_GENERAL | FFC_FORMAT_FLAG_NO_INFNAN;
+
+    pub const FFC_PRESET_JSON_OR_INFNAN: FfcFormat =
+        FFC_FORMAT_FLAG_BASIC_JSON | FFC_PRESET_GENERAL;
+
+    pub const FFC_PRESET_FORTRAN: FfcFormat =
+        FFC_FORMAT_FLAG_BASIC_FORTRAN | FFC_PRESET_GENERAL;
+
+    #[repr(C)]
+    pub struct ffc_parse_options {
+        pub format: FfcFormat,
+        pub decimal_point: c_char,
+    }
+
+    // --- Internal helpers -----------------------------------------------------
+
+    fn map_error(err: ParseError) -> FfcOutcome {
+        match err {
+            ParseError::InvalidInput => FFC_OUTCOME_INVALID_INPUT,
+            ParseError::OutOfRange => FFC_OUTCOME_OUT_OF_RANGE,
+        }
+    }
+
+    fn to_rust_options(opts: ffc_parse_options) -> FfcParseOptions {
+        let format = FfFormat::from_bits_truncate(opts.format as u32);
+        let dp = if opts.decimal_point as u8 == 0 {
+            b'.'
+        } else {
+            opts.decimal_point as u8
+        };
+        FfcParseOptions { format, decimal_point: dp }
+    }
+
+    unsafe fn slice_from_char_ptr<'a>(start: *const c_char, end: *const c_char) -> &'a [u8] {
+        let len = end.offset_from(start);
+        if len <= 0 {
+            return &[];
+        }
+        core::slice::from_raw_parts(start as *const u8, len as usize)
+    }
+
+    /// Helper to convert a Rust parsing result into an `ffc_result` while writing
+    /// the output value (or its default on error) through the provided pointer.
+    fn from_parse_result<T: Default + Copy>(
+        res: Result<(T, &[u8]), ParseError>,
+        out: *mut T,
+        input_start: *const c_char,
+    ) -> ffc_result {
+        match res {
+            Ok((value, remainder)) => {
+                unsafe { *out = value };
+                ffc_result {
+                    ptr: remainder.as_ptr() as *const c_char,
+                    outcome: FFC_OUTCOME_OK,
+                }
+            }
+            Err(e) => {
+                unsafe { *out = T::default() };
+                ffc_result {
+                    ptr: input_start,
+                    outcome: map_error(e),
+                }
+            }
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn ffc_parse_options_default() -> ffc_parse_options {
+        ffc_parse_options {
+            format: FFC_PRESET_GENERAL,
+            decimal_point: b'.' as c_char,
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn ffc_parse_double_simple(
+        len: usize,
+        input: *const c_char,
+        outcome: *mut FfcOutcome,
+    ) -> f64 {
+        let mut out = 0.0f64;
+        let res = unsafe { ffc_parse_double(len, input, &mut out) };
+        if !outcome.is_null() {
+            unsafe { *outcome = res.outcome };
+        }
+        out
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn ffc_parse_double(
+        len: usize,
+        input: *const c_char,
+        out: *mut f64,
+    ) -> ffc_result {
+        if input.is_null() || out.is_null() {
+            return ffc_result { ptr: core::ptr::null(), outcome: FFC_OUTCOME_INVALID_INPUT };
+        }
+
+        let slice = unsafe { core::slice::from_raw_parts(input as *const u8, len) };
+        from_parse_result(parse_float::<f64>(slice, FfcParseOptions::default()), out, input)
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn ffc_from_chars_double(
+        start: *const c_char,
+        end: *const c_char,
+        out: *mut f64,
+    ) -> ffc_result {
+        ffc_from_chars_double_options(start, end, out, ffc_parse_options_default())
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn ffc_from_chars_double_options(
+        start: *const c_char,
+        end: *const c_char,
+        out: *mut f64,
+        options: ffc_parse_options,
+    ) -> ffc_result {
+        if start.is_null() || end.is_null() || out.is_null() {
+            return ffc_result { ptr: core::ptr::null(), outcome: FFC_OUTCOME_INVALID_INPUT };
+        }
+
+        let slice = unsafe { slice_from_char_ptr(start, end) };
+        let rust_opts = to_rust_options(options);
+
+        from_parse_result(parse_float::<f64>(slice, rust_opts), out, start)
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn ffc_parse_float_simple(
+        len: usize,
+        input: *const c_char,
+        outcome: *mut FfcOutcome,
+    ) -> f32 {
+        let mut out = 0.0f32;
+        let res = unsafe { ffc_parse_float(len, input, &mut out) };
+        if !outcome.is_null() {
+            unsafe { *outcome = res.outcome };
+        }
+        out
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn ffc_parse_float(
+        len: usize,
+        input: *const c_char,
+        out: *mut f32,
+    ) -> ffc_result {
+        if input.is_null() || out.is_null() {
+            return ffc_result { ptr: core::ptr::null(), outcome: FFC_OUTCOME_INVALID_INPUT };
+        }
+
+        let slice = unsafe { core::slice::from_raw_parts(input as *const u8, len) };
+        from_parse_result(parse_float::<f32>(slice, FfcParseOptions::default()), out, input)
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn ffc_from_chars_float(
+        start: *const c_char,
+        end: *const c_char,
+        out: *mut f32,
+    ) -> ffc_result {
+        ffc_from_chars_float_options(start, end, out, ffc_parse_options_default())
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn ffc_from_chars_float_options(
+        start: *const c_char,
+        end: *const c_char,
+        out: *mut f32,
+        options: ffc_parse_options,
+    ) -> ffc_result {
+        if start.is_null() || end.is_null() || out.is_null() {
+            return ffc_result { ptr: core::ptr::null(), outcome: FFC_OUTCOME_INVALID_INPUT };
+        }
+
+        let slice = unsafe { slice_from_char_ptr(start, end) };
+        let rust_opts = to_rust_options(options);
+
+        from_parse_result(parse_float::<f32>(slice, rust_opts), out, start)
+    }
+
+    unsafe fn parse_int_with_base<T>(
+        len: usize,
+        input: *const c_char,
+        base: i32,
+        out: *mut T,
+    ) -> ffc_result
+    where
+        T: FastInt,
+        T: Default,
+    {
+        if input.is_null() || out.is_null() {
+            return ffc_result { ptr: core::ptr::null(), outcome: FFC_OUTCOME_INVALID_INPUT };
+        }
+
+        if base != 10 {
+            unsafe { *out = core::mem::zeroed() };
+            return ffc_result { ptr: input, outcome: FFC_OUTCOME_INVALID_INPUT };
+        }
+
+        let slice = unsafe { core::slice::from_raw_parts(input as *const u8, len) };
+        from_parse_result(parse_int::<T>(slice), out, input)
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn ffc_parse_i64(
+        len: usize,
+        input: *const c_char,
+        base: i32,
+        out: *mut i64,
+    ) -> ffc_result {
+        parse_int_with_base::<i64>(len, input, base, out)
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn ffc_parse_u64(
+        len: usize,
+        input: *const c_char,
+        base: i32,
+        out: *mut u64,
+    ) -> ffc_result {
+        parse_int_with_base::<u64>(len, input, base, out)
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn ffc_parse_i32(
+        len: usize,
+        input: *const c_char,
+        base: i32,
+        out: *mut i32,
+    ) -> ffc_result {
+        parse_int_with_base::<i32>(len, input, base, out)
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn ffc_parse_u32(
+        len: usize,
+        input: *const c_char,
+        base: i32,
+        out: *mut u32,
+    ) -> ffc_result {
+        parse_int_with_base::<u32>(len, input, base, out)
+    }
 }

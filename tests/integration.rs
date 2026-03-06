@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use fastfloatrs::{
-        FastFloat, FastInt, FfcFormat, FfcParseOptions, ParseError, parse_float, parse_int,
+        FastFloat, FastInt, FfFormat, FfcParseOptions, ParseError, parse_float, parse_int,
     };
 
     fn verify_float_exact<T: FastFloat + std::fmt::Debug + std::fmt::Display>(
@@ -68,7 +68,7 @@ mod tests {
     #[test]
     fn test_float_json_constraints() {
         let json_opts = FfcParseOptions {
-            format: FfcFormat::PRESET_JSON,
+            format: FfFormat::PRESET_JSON,
             ..Default::default()
         };
 
